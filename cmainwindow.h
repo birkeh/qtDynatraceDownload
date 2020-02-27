@@ -12,28 +12,64 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class cMainWindow; }
 QT_END_NAMESPACE
 
+/**
+ * @brief
+ *
+ */
 class cMainWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    cMainWindow(QWidget *parent = nullptr);
-    ~cMainWindow();
+	/**
+	 * @brief
+	 *
+	 * @param parent
+	 */
+	cMainWindow(QWidget *parent = nullptr);
+	/**
+	 * @brief
+	 *
+	 */
+	~cMainWindow();
 
 private:
-    Ui::cMainWindow*                ui;
-	QSqlDatabase                    m_db;
+	Ui::cMainWindow*                ui;							/**< TODO: describe */
+	QSqlDatabase                    m_db;						/**< TODO: describe */
 
-	QStandardItemModel*				m_lpDownloadsListModel;
-	QStandardItemModel*				m_lpPathsListModel;
+	QStandardItemModel*				m_lpDownloadsListModel;		/**< TODO: describe */
+	QStandardItemModel*				m_lpPathsListModel;			/**< TODO: describe */
 
 protected:
-    void							closeEvent(QCloseEvent* event);
+	/**
+	 * @brief
+	 *
+	 * @param event
+	 */
+	void							closeEvent(QCloseEvent* event);
 
 private slots:
+	/**
+	 * @brief
+	 *
+	 * @param pos
+	 */
 	void							onPathsContextMenu(const QPoint &pos);
+	/**
+	 * @brief
+	 *
+	 * @param item
+	 */
 	void							onPathsChanged(QStandardItem* item);
+	/**
+	 * @brief
+	 *
+	 */
 	void							onPathsAdd();
+	/**
+	 * @brief
+	 *
+	 */
 	void							onPathsDelete();
 };
 #endif // CMAINWINDOW_H
