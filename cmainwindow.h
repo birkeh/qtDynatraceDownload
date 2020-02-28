@@ -3,6 +3,8 @@
 
 
 #include "cpathsitemdelegate.h"
+#include "cdownloads.h"
+#include "cpaths.h"
 
 #include <QMainWindow>
 #include <QSqlDatabase>
@@ -37,10 +39,13 @@ public:
 
 private:
 	Ui::cMainWindow*                ui;							/**< TODO: describe */
-	QSqlDatabase                    m_db;						/**< TODO: describe */
 
 	QStandardItemModel*				m_lpDownloadsListModel;		/**< TODO: describe */
 	QStandardItemModel*				m_lpPathsListModel;			/**< TODO: describe */
+
+	cDownloadsList					m_downloadsList;			/**< TODO: describe */
+	cPathsList						m_pathsList;				/**< TODO: describe */
+
 protected:
 	/**
 	 * @brief
@@ -50,6 +55,9 @@ protected:
 	void							closeEvent(QCloseEvent* event);
 
 private slots:
+	void							onUpdate();
+	void							onDownload();
+
 	/**
 	 * @brief
 	 *

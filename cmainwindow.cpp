@@ -14,13 +14,19 @@
 #include <QMessageBox>
 
 
+QSqlDatabase	g_db;
+
+
 cMainWindow::cMainWindow(QWidget *parent)
 	: QMainWindow(parent),
 	  ui(new Ui::cMainWindow),
 	  m_lpDownloadsListModel(nullptr),
-	  m_lpPathsListModel(nullptr)
+	  m_lpPathsListModel(nullptr),
+	  m_downloadsList(&m_pathsList)
 {
 	ui->setupUi(this);
+
+	ui->m_lpMainTab->setCurrentIndex(0);
 
 	m_lpDownloadsListModel	= new QStandardItemModel(0, 0);
 	ui->m_lpDownloadsList->setModel(m_lpDownloadsListModel);
@@ -34,19 +40,19 @@ cMainWindow::cMainWindow(QWidget *parent)
 	header << "server" << "path" << "local folder" << "username" << "password";
 	m_lpPathsListModel->setHorizontalHeaderLabels(header);
 
-	m_db	= QSqlDatabase::addDatabase("QSQLITE", "qtDynatraceDownload");
-	m_db.setHostName("localhost");
-	m_db.setDatabaseName(QDir::homePath() + "/qtDynatraceDownload.db");
+	g_db	= QSqlDatabase::addDatabase("QSQLITE", "qtDynatraceDownload");
+	g_db.setHostName("localhost");
+	g_db.setDatabaseName(QDir::homePath() + "/qtDynatraceDownload.db");
 
-	if(!m_db.open())
+	if(!g_db.open())
 	{
-		qDebug() << "open database: " << m_db.lastError().text();
+		qDebug() << "open database: " << g_db.lastError().text();
 		return;
 	}
 
-	QSqlQuery	query(m_db);
+	QSqlQuery	query(g_db);
 
-	if(!m_db.tables().contains("paths"))
+	if(!g_db.tables().contains("paths"))
 	{
 		query.prepare("CREATE TABLE paths "
 					  "( "
@@ -63,69 +69,54 @@ cMainWindow::cMainWindow(QWidget *parent)
 		if(!query.exec())
 		{
 			qDebug() << "SELECT paths: " << query.lastError().text();
-			m_db.close();
+			g_db.close();
 			return;
 		}
 	}
 
-	if(!m_db.tables().contains("downloads"))
+	if(!g_db.tables().contains("downloads"))
 	{
 		query.prepare("CREATE TABLE downloads "
 					  "( "
 					  "    id            INTEGER  PRIMARY KEY AUTOINCREMENT UNIQUE, "
 					  "    pathsID       INTEGER  REFERENCES paths (id), "
 					  "    fileName      TEXT, "
+					  "    timestamp     DATETIME, "
+					  "    reportName    TEXT, "
 					  "    localFileName TEXT, "
-					  "    timestamp     DATETIME "
+					  "    downloaded    DATETIME "
 					  ");");
 
 		if(!query.exec())
 		{
 			qDebug() << "SELECT paths: " << query.lastError().text();
-			m_db.close();
+			g_db.close();
 			return;
 		}
 	}
 
-	query.prepare("SELECT id, server, path, localFolder, username, password, active FROM paths ORDER BY server, path, localFolder;");
-	if(!query.exec())
-	{
-		qDebug() << "SELECT paths: " << query.lastError().text();
-		return;
-	}
+	m_pathsList.load();
 
-	while(query.next())
+	for(int x = 0;x < m_pathsList.count();x++)
 	{
+		cPaths*	lpPaths	= m_pathsList[x];
+
 		QList<QStandardItem*>	items;
 
-		items.append(new QStandardItem(query.value("server").toString()));
-		items.append(new QStandardItem(query.value("path").toString()));
-		items.append(new QStandardItem(query.value("localFolder").toString()));
-		items.append(new QStandardItem(query.value("userName").toString()));
+		items.append(new QStandardItem(lpPaths->server()));
+		items.append(new QStandardItem(lpPaths->path()));
+		items.append(new QStandardItem(lpPaths->localFolder()));
+		items.append(new QStandardItem(lpPaths->userName()));
 		items.append(new QStandardItem("*****"));
-//		if(query.value("password").toString().isEmpty())
-//			items.append(new QStandardItem(""));
-//		else
-//			items.append(new QStandardItem("*****"));
 
 		items[0]->setCheckable(true);
-		items[0]->setCheckState(query.value("active").toBool() ? Qt::Checked : Qt::Unchecked);
+		items[0]->setCheckState(lpPaths->active() ? Qt::Checked : Qt::Unchecked);
 
-		items[0]->setData(QVariant::fromValue(query.value("id").toInt()), Qt::UserRole+1);
-		items[0]->setData(QVariant::fromValue(query.value("server").toString()), Qt::UserRole+2);
-		items[0]->setData(QVariant::fromValue(query.value("active").toBool()), Qt::UserRole+3);
-
-		items[1]->setData(QVariant::fromValue(query.value("id").toInt()), Qt::UserRole+1);
-		items[1]->setData(QVariant::fromValue(query.value("path").toString()), Qt::UserRole+2);
-
-		items[2]->setData(QVariant::fromValue(query.value("id").toInt()), Qt::UserRole+1);
-		items[2]->setData(QVariant::fromValue(query.value("localFolder").toString()), Qt::UserRole+2);
-
-		items[3]->setData(QVariant::fromValue(query.value("id").toInt()), Qt::UserRole+1);
-		items[3]->setData(QVariant::fromValue(query.value("userName").toString()), Qt::UserRole+2);
-
-		items[4]->setData(QVariant::fromValue(query.value("id").toInt()), Qt::UserRole+1);
-		items[4]->setData(QVariant::fromValue(query.value("password").toString()), Qt::UserRole+2);
+		items[0]->setData(QVariant::fromValue(lpPaths), Qt::UserRole+1);
+		items[1]->setData(QVariant::fromValue(lpPaths), Qt::UserRole+1);
+		items[2]->setData(QVariant::fromValue(lpPaths), Qt::UserRole+1);
+		items[3]->setData(QVariant::fromValue(lpPaths), Qt::UserRole+1);
+		items[4]->setData(QVariant::fromValue(lpPaths), Qt::UserRole+1);
 
 		m_lpPathsListModel->appendRow(items);
 	}
@@ -136,14 +127,19 @@ cMainWindow::cMainWindow(QWidget *parent)
 	ui->m_lpPathsList->resizeColumnToContents(3);
 	ui->m_lpPathsList->resizeColumnToContents(4);
 
+	m_downloadsList.load();
+
+	connect(ui->m_lpUpdate,		&QPushButton::clicked,					this,	&cMainWindow::onUpdate);
+	connect(ui->m_lpDownload,	&QPushButton::clicked,					this,	&cMainWindow::onDownload);
+
 	connect(ui->m_lpPathsList,	&QTreeView::customContextMenuRequested,	this,	&cMainWindow::onPathsContextMenu);
 	connect(m_lpPathsListModel,	&QStandardItemModel::itemChanged,		this,	&cMainWindow::onPathsChanged);
 }
 
 cMainWindow::~cMainWindow()
 {
-	if(m_db.isOpen())
-		m_db.close();
+	if(g_db.isOpen())
+		g_db.close();
 	delete ui;
 }
 
@@ -162,6 +158,21 @@ void cMainWindow::closeEvent(QCloseEvent *event)
 	event->accept();
 }
 
+void cMainWindow::onUpdate()
+{
+	for(int row = 0;row < m_lpPathsListModel->rowCount();row++)
+	{
+		cPaths*			lpPaths			= m_lpPathsListModel->item(row, 0)->data(Qt::UserRole+1).value<cPaths*>();
+
+		if(lpPaths->active())
+			m_downloadsList.load(lpPaths);
+	}
+}
+
+void cMainWindow::onDownload()
+{
+}
+
 void cMainWindow::onPathsContextMenu(const QPoint &pos)
 {
 	QMenu*	lpMenu	= new QMenu(this);
@@ -176,62 +187,23 @@ void cMainWindow::onPathsContextMenu(const QPoint &pos)
 
 void cMainWindow::onPathsAdd()
 {
-	QSqlQuery				query(m_db);
-	int						number;
-
-	query.prepare("INSERT INTO paths (server, path, localFolder, active) VALUES (:server, :path, :localFolder, :active);");
-	query.bindValue(":path", "path");
-	query.bindValue(":localFolder", "localFolder");
-	query.bindValue(":active", true);
-
-	for(number = 1;;number++)
-	{
-		query.bindValue(":server", QString("server%1").arg(number));
-		if(query.exec())
-			break;
-	}
-
-	query.prepare("SELECT id FROM paths WHERE server=:server AND path=:path AND localFolder=:localFolder;");
-	query.bindValue(":server", QString("server%1").arg(number));
-	query.bindValue(":path", "path");
-	query.bindValue(":localFolder", "localFolder");
-	if(!query.exec())
-	{
-		qDebug() << "new path: " << query.lastError().text();
-		return;
-	}
-	if(!query.next())
-	{
-		qDebug() << "new path: " << query.lastError().text();
-		return;
-	}
+	cPaths*		lpPaths	= m_pathsList.add();
 
 	QList<QStandardItem*>	items;
 
-	items.append(new QStandardItem(QString("server%1").arg(number)));
-	items.append(new QStandardItem("path"));
-	items.append(new QStandardItem("localFolder"));
-	items.append(new QStandardItem(""));
-	items.append(new QStandardItem(""));
+	items.append(new QStandardItem(lpPaths->server()));
+	items.append(new QStandardItem(lpPaths->path()));
+	items.append(new QStandardItem(lpPaths->localFolder()));
+	items.append(new QStandardItem(lpPaths->userName()));
+	items.append(new QStandardItem(lpPaths->password()));
 
 	items[0]->setCheckable(true);
-	items[0]->setCheckState(Qt::Checked);
-
-	items[0]->setData(QVariant::fromValue(query.value("id").toInt()), Qt::UserRole+1);
-	items[0]->setData(QVariant::fromValue(QString("server%1").arg(number)), Qt::UserRole+2);
-	items[0]->setData(QVariant::fromValue(Qt::Checked), Qt::UserRole+3);
-
-	items[1]->setData(QVariant::fromValue(query.value("id").toInt()), Qt::UserRole+1);
-	items[1]->setData(QVariant::fromValue(QString("path")), Qt::UserRole+2);
-
-	items[2]->setData(QVariant::fromValue(query.value("id").toInt()), Qt::UserRole+1);
-	items[2]->setData(QVariant::fromValue(QString("localFolder")), Qt::UserRole+2);
-
-	items[3]->setData(QVariant::fromValue(query.value("id").toInt()), Qt::UserRole+1);
-	items[3]->setData(QVariant::fromValue(QString("")), Qt::UserRole+2);
-
-	items[4]->setData(QVariant::fromValue(query.value("id").toInt()), Qt::UserRole+1);
-	items[4]->setData(QVariant::fromValue(QString("*****")), Qt::UserRole+2);
+	items[0]->setCheckState(lpPaths->active() ? Qt::Checked : Qt::Unchecked);
+	items[0]->setData(QVariant::fromValue(lpPaths), Qt::UserRole+1);
+	items[1]->setData(QVariant::fromValue(lpPaths), Qt::UserRole+1);
+	items[2]->setData(QVariant::fromValue(lpPaths), Qt::UserRole+1);
+	items[3]->setData(QVariant::fromValue(lpPaths), Qt::UserRole+1);
+	items[4]->setData(QVariant::fromValue(lpPaths), Qt::UserRole+1);
 
 	m_lpPathsListModel->appendRow(items);
 }
@@ -245,48 +217,52 @@ void cMainWindow::onPathsDelete()
 		return;
 
 	QModelIndex	index	= ui->m_lpPathsList->selectionModel()->selectedIndexes()[0];
-	QSqlQuery	query(m_db);
+	cPaths*		lpPaths	= index.data(Qt::UserRole+1).value<cPaths*>();
 
-	query.prepare("DELETE FROM paths WHERE id=:id;");
-	query.bindValue(":id", m_lpPathsListModel->data(index, Qt::UserRole+1).toInt());
-
-	if(!query.exec())
-	{
-		qDebug() << "onPathsChanged: " << query.lastError().text();
+	if(!m_pathsList.del(lpPaths))
 		return;
-	}
 
 	m_lpPathsListModel->removeRow(index.row());
 }
 
 void cMainWindow::onPathsChanged(QStandardItem* item)
 {
-	QSqlQuery	query(m_db);
-
-	query.prepare("UPDATE paths SET server=:server, path=:path, localFolder=:localFolder, username=:username, password=:password, active=:active WHERE id=:id;");
-	query.bindValue(":id",			m_lpPathsListModel->item(item->row(), 0)->data(Qt::UserRole+1).toInt());
-	query.bindValue(":server",		m_lpPathsListModel->item(item->row(), 0)->text());
-	query.bindValue(":path",		m_lpPathsListModel->item(item->row(), 1)->text());
-	query.bindValue(":localFolder",	m_lpPathsListModel->item(item->row(), 2)->text());
-	query.bindValue(":username",	m_lpPathsListModel->item(item->row(), 3)->text());
-	query.bindValue(":password",	m_lpPathsListModel->item(item->row(), 4)->text());
-	query.bindValue(":active",		m_lpPathsListModel->item(item->row(), 0)->checkState() == Qt::Checked);
-
 	disconnect(m_lpPathsListModel,	&QStandardItemModel::itemChanged,		this,	&cMainWindow::onPathsChanged);
 
-	if(!query.exec())
-	{
-		item->setText(item->data(Qt::UserRole+2).toString());
-		qDebug() << "onPathsChanged: " << query.lastError().text();
+	cPaths*		lpPaths	= item->data(Qt::UserRole+1).value<cPaths*>();
 
-		connect(m_lpPathsListModel,	&QStandardItemModel::itemChanged,		this,	&cMainWindow::onPathsChanged);
-		return;
+	switch(item->column())
+	{
+	case 0:
+		lpPaths->setServer(m_lpPathsListModel->item(item->row(), 0)->text());
+		break;
+	case 1:
+		lpPaths->setPath(m_lpPathsListModel->item(item->row(), 1)->text());
+		break;
+	case 2:
+		lpPaths->setLocalFolder(m_lpPathsListModel->item(item->row(), 2)->text());
+		break;
+	case 3:
+		lpPaths->setUserName(m_lpPathsListModel->item(item->row(), 3)->text());
+		break;
+	case 4:
+		lpPaths->setPassword(m_lpPathsListModel->item(item->row(), 4)->text());
+		break;
 	}
 
-	item->setData(QVariant::fromValue(item->text()), Qt::UserRole+2);
-	if(item->column() == 4)
-		item->setText("*****");
+	lpPaths->setActive(m_lpPathsListModel->item(item->row(), 0)->checkState() == Qt::Checked);
 
-	m_lpPathsListModel->item(item->row(), 0)->setData(QVariant::fromValue(m_lpPathsListModel->item(item->row(), 0)->checkState() == Qt::Checked), Qt::UserRole+3);
+	if(!lpPaths->save())
+	{
+		m_lpPathsListModel->item(item->row(), 0)->setText(lpPaths->server());
+		m_lpPathsListModel->item(item->row(), 1)->setText(lpPaths->path());
+		m_lpPathsListModel->item(item->row(), 2)->setText(lpPaths->localFolder());
+		m_lpPathsListModel->item(item->row(), 3)->setText(lpPaths->userName());
+		m_lpPathsListModel->item(item->row(), 4)->setText("*****");
+		m_lpPathsListModel->item(item->row(), 0)->setCheckState(lpPaths->active() ? Qt::Checked : Qt::Unchecked);
+	}
+	else
+		m_lpPathsListModel->item(item->row(), 4)->setText("*****");
+
 	connect(m_lpPathsListModel,	&QStandardItemModel::itemChanged,		this,	&cMainWindow::onPathsChanged);
 }
