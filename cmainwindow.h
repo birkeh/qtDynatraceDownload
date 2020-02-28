@@ -2,6 +2,8 @@
 #define CMAINWINDOW_H
 
 
+#include "cpathsitemdelegate.h"
+
 #include <QMainWindow>
 #include <QSqlDatabase>
 #include <QStandardItemModel>
@@ -39,7 +41,6 @@ private:
 
 	QStandardItemModel*				m_lpDownloadsListModel;		/**< TODO: describe */
 	QStandardItemModel*				m_lpPathsListModel;			/**< TODO: describe */
-
 protected:
 	/**
 	 * @brief

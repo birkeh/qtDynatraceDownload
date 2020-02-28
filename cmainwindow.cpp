@@ -27,6 +27,7 @@ cMainWindow::cMainWindow(QWidget *parent)
 
 	m_lpPathsListModel	= new QStandardItemModel(0, 0);
 	ui->m_lpPathsList->setModel(m_lpPathsListModel);
+	ui->m_lpPathsList->setItemDelegate(new cPathsItemDelegate);
 
 	QStringList	header;
 
@@ -101,7 +102,7 @@ cMainWindow::cMainWindow(QWidget *parent)
 		items.append(new QStandardItem(query.value("path").toString()));
 		items.append(new QStandardItem(query.value("localFolder").toString()));
 		items.append(new QStandardItem(query.value("userName").toString()));
-		items.append(new QStandardItem(query.value("password").toString()));
+		items.append(new QStandardItem("*****"));
 //		if(query.value("password").toString().isEmpty())
 //			items.append(new QStandardItem(""));
 //		else
@@ -128,6 +129,12 @@ cMainWindow::cMainWindow(QWidget *parent)
 
 		m_lpPathsListModel->appendRow(items);
 	}
+
+	ui->m_lpPathsList->resizeColumnToContents(0);
+	ui->m_lpPathsList->resizeColumnToContents(1);
+	ui->m_lpPathsList->resizeColumnToContents(2);
+	ui->m_lpPathsList->resizeColumnToContents(3);
+	ui->m_lpPathsList->resizeColumnToContents(4);
 
 	connect(ui->m_lpPathsList,	&QTreeView::customContextMenuRequested,	this,	&cMainWindow::onPathsContextMenu);
 	connect(m_lpPathsListModel,	&QStandardItemModel::itemChanged,		this,	&cMainWindow::onPathsChanged);
@@ -224,7 +231,7 @@ void cMainWindow::onPathsAdd()
 	items[3]->setData(QVariant::fromValue(QString("")), Qt::UserRole+2);
 
 	items[4]->setData(QVariant::fromValue(query.value("id").toInt()), Qt::UserRole+1);
-	items[4]->setData(QVariant::fromValue(QString("")), Qt::UserRole+2);
+	items[4]->setData(QVariant::fromValue(QString("*****")), Qt::UserRole+2);
 
 	m_lpPathsListModel->appendRow(items);
 }
@@ -255,23 +262,6 @@ void cMainWindow::onPathsDelete()
 void cMainWindow::onPathsChanged(QStandardItem* item)
 {
 	QSqlQuery	query(m_db);
-	bool		save	= false;
-
-	if(m_lpPathsListModel->item(item->row(), 0)->data(Qt::UserRole+2).toString() != m_lpPathsListModel->item(item->row(), 0)->text())
-		save	= true;
-	if(m_lpPathsListModel->item(item->row(), 1)->data(Qt::UserRole+2).toString() != m_lpPathsListModel->item(item->row(), 1)->text())
-		save	= true;
-	if(m_lpPathsListModel->item(item->row(), 2)->data(Qt::UserRole+2).toString() != m_lpPathsListModel->item(item->row(), 2)->text())
-		save	= true;
-	if(m_lpPathsListModel->item(item->row(), 3)->data(Qt::UserRole+2).toString() != m_lpPathsListModel->item(item->row(), 3)->text())
-		save	= true;
-	if(m_lpPathsListModel->item(item->row(), 4)->data(Qt::UserRole+2).toString() != m_lpPathsListModel->item(item->row(), 4)->text())
-		save	= true;
-	if((m_lpPathsListModel->item(item->row(), 0)->data(Qt::UserRole+3).toBool() != (m_lpPathsListModel->item(item->row(), 0)->checkState() == Qt::Checked)))
-		save	= true;
-
-	if(!save)
-		return;
 
 	query.prepare("UPDATE paths SET server=:server, path=:path, localFolder=:localFolder, username=:username, password=:password, active=:active WHERE id=:id;");
 	query.bindValue(":id",			m_lpPathsListModel->item(item->row(), 0)->data(Qt::UserRole+1).toInt());
@@ -282,18 +272,21 @@ void cMainWindow::onPathsChanged(QStandardItem* item)
 	query.bindValue(":password",	m_lpPathsListModel->item(item->row(), 4)->text());
 	query.bindValue(":active",		m_lpPathsListModel->item(item->row(), 0)->checkState() == Qt::Checked);
 
-	disconnect(ui->m_lpPathsList,	&QTreeView::customContextMenuRequested,	this,	&cMainWindow::onPathsContextMenu);
+	disconnect(m_lpPathsListModel,	&QStandardItemModel::itemChanged,		this,	&cMainWindow::onPathsChanged);
 
 	if(!query.exec())
 	{
 		item->setText(item->data(Qt::UserRole+2).toString());
 		qDebug() << "onPathsChanged: " << query.lastError().text();
 
-		connect(ui->m_lpPathsList,	&QTreeView::customContextMenuRequested,	this,	&cMainWindow::onPathsContextMenu);
+		connect(m_lpPathsListModel,	&QStandardItemModel::itemChanged,		this,	&cMainWindow::onPathsChanged);
 		return;
 	}
 
 	item->setData(QVariant::fromValue(item->text()), Qt::UserRole+2);
+	if(item->column() == 4)
+		item->setText("*****");
+
 	m_lpPathsListModel->item(item->row(), 0)->setData(QVariant::fromValue(m_lpPathsListModel->item(item->row(), 0)->checkState() == Qt::Checked), Qt::UserRole+3);
-	connect(ui->m_lpPathsList,	&QTreeView::customContextMenuRequested,	this,	&cMainWindow::onPathsContextMenu);
+	connect(m_lpPathsListModel,	&QStandardItemModel::itemChanged,		this,	&cMainWindow::onPathsChanged);
 }
