@@ -17,6 +17,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
     cdownloads.cpp \
+    cdownloadsfilterproxymodel.cpp \
     cpaths.cpp \
     cpathselectwidget.cpp \
     cpathsitemdelegate.cpp \
@@ -25,6 +26,7 @@ SOURCES += \
 
 HEADERS += \
     cdownloads.h \
+    cdownloadsfilterproxymodel.h \
     cmainwindow.h \
     cpaths.h \
     cpathselectwidget.h \

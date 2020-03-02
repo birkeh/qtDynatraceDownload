@@ -5,6 +5,9 @@
 #include <QSqlError>
 
 #include <QDir>
+#include <QFile>
+#include <QTextStream>
+
 #include <QList>
 #include <QStandardItem>
 
@@ -12,6 +15,11 @@
 #include <QDebug>
 
 #include <QMessageBox>
+
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QEventLoop>
 
 
 QSqlDatabase	g_db;
@@ -21,17 +29,24 @@ cMainWindow::cMainWindow(QWidget *parent)
 	: QMainWindow(parent),
 	  ui(new Ui::cMainWindow),
 	  m_lpDownloadsListModel(nullptr),
+	  m_lpDownloadsFilterProxyModel(nullptr),
 	  m_lpPathsListModel(nullptr),
 	  m_downloadsList(&m_pathsList)
 {
 	ui->setupUi(this);
 
+	m_lpProgressBar					= new QProgressBar(this);
+	m_lpProgressBar->setVisible(false);
+	ui->m_lpStatusBar->addPermanentWidget(m_lpProgressBar);
+
 	ui->m_lpMainTab->setCurrentIndex(0);
 
-	m_lpDownloadsListModel	= new QStandardItemModel(0, 0);
-	ui->m_lpDownloadsList->setModel(m_lpDownloadsListModel);
+	m_lpDownloadsListModel			= new QStandardItemModel(0, 0);
+	m_lpDownloadsFilterProxyModel	= new cDownloadsFilterProxyModel(this);
+	ui->m_lpDownloadsList->setModel(m_lpDownloadsFilterProxyModel);
+	m_lpDownloadsFilterProxyModel->setSourceModel(m_lpDownloadsListModel);
 
-	m_lpPathsListModel	= new QStandardItemModel(0, 0);
+	m_lpPathsListModel				= new QStandardItemModel(0, 0);
 	ui->m_lpPathsList->setModel(m_lpPathsListModel);
 	ui->m_lpPathsList->setItemDelegate(new cPathsItemDelegate);
 
@@ -83,6 +98,7 @@ cMainWindow::cMainWindow(QWidget *parent)
 					  "    fileName      TEXT, "
 					  "    timestamp     DATETIME, "
 					  "    reportName    TEXT, "
+					  "    localFolder   TEXT, "
 					  "    localFileName TEXT, "
 					  "    downloaded    DATETIME "
 					  ");");
@@ -121,25 +137,37 @@ cMainWindow::cMainWindow(QWidget *parent)
 		m_lpPathsListModel->appendRow(items);
 	}
 
-	ui->m_lpPathsList->resizeColumnToContents(0);
-	ui->m_lpPathsList->resizeColumnToContents(1);
-	ui->m_lpPathsList->resizeColumnToContents(2);
-	ui->m_lpPathsList->resizeColumnToContents(3);
-	ui->m_lpPathsList->resizeColumnToContents(4);
+	for(int x = 0;x < m_lpPathsListModel->columnCount();x++)
+		ui->m_lpPathsList->resizeColumnToContents(x);
 
 	m_downloadsList.load();
+
+	fillDownloadsList();
+
+	QSettings	settings;
+
+	ui->m_lpStartDate->setDate(settings.value("startDate", QVariant::fromValue(QDate(2019, 1, 1))).toDate());
+	onStartDateChanged(ui->m_lpStartDate->date());
 
 	connect(ui->m_lpUpdate,		&QPushButton::clicked,					this,	&cMainWindow::onUpdate);
 	connect(ui->m_lpDownload,	&QPushButton::clicked,					this,	&cMainWindow::onDownload);
 
 	connect(ui->m_lpPathsList,	&QTreeView::customContextMenuRequested,	this,	&cMainWindow::onPathsContextMenu);
 	connect(m_lpPathsListModel,	&QStandardItemModel::itemChanged,		this,	&cMainWindow::onPathsChanged);
+
+	connect(ui->m_lpStartDate,	&QDateEdit::dateChanged,				this,	&cMainWindow::onStartDateChanged);
 }
 
 cMainWindow::~cMainWindow()
 {
 	if(g_db.isOpen())
 		g_db.close();
+
+	delete m_lpDownloadsListModel;
+	delete m_lpDownloadsFilterProxyModel;
+	delete m_lpPathsListModel;
+	delete m_lpProgressBar;
+
 	delete ui;
 }
 
@@ -160,17 +188,79 @@ void cMainWindow::closeEvent(QCloseEvent *event)
 
 void cMainWindow::onUpdate()
 {
+	m_lpProgressBar->setRange(0, m_lpPathsListModel->rowCount()-1);
+	m_lpProgressBar->setVisible(true);
+
 	for(int row = 0;row < m_lpPathsListModel->rowCount();row++)
 	{
 		cPaths*			lpPaths			= m_lpPathsListModel->item(row, 0)->data(Qt::UserRole+1).value<cPaths*>();
 
 		if(lpPaths->active())
 			m_downloadsList.load(lpPaths);
+
+		m_lpProgressBar->setValue(row);
+		qApp->processEvents();
 	}
+
+	fillDownloadsList();
+
+	m_lpProgressBar->setVisible(false);
 }
 
 void cMainWindow::onDownload()
 {
+	int		totalCount	= 0;
+
+	for(int rowServer = 0;rowServer < m_lpDownloadsListModel->rowCount();rowServer++)
+	{
+		QStandardItem*	lpServer	= m_lpDownloadsListModel->item(rowServer, 0);
+
+		for(int rowPath = 0;rowPath < lpServer->rowCount();rowPath++)
+		{
+			QStandardItem*	lpPath	= lpServer->child(rowPath, 0);
+			totalCount	+= lpPath->rowCount();
+		}
+	}
+
+	m_lpProgressBar->setRange(0, totalCount-1);
+	m_lpProgressBar->setVisible(true);
+
+	int	curRow	= 0;
+
+	for(int rowServer = 0;rowServer < m_lpDownloadsListModel->rowCount();rowServer++)
+	{
+		QStandardItem*	lpServer	= m_lpDownloadsListModel->item(rowServer, 0);
+
+		for(int rowPath = 0;rowPath < lpServer->rowCount();rowPath++)
+		{
+			QStandardItem*	lpPath	= lpServer->child(rowPath, 0);
+
+			for(int row = 0;row < lpPath->rowCount();row++)
+			{
+				QStandardItem*	lpItem	= lpPath->child(row, 0);
+				cDownloads*		lpDownloads	= lpItem->data(Qt::UserRole+1).value<cDownloads*>();
+
+				if(!lpDownloads->downloaded().isValid())
+				{
+					download(lpDownloads);
+					lpPath->child(row, 2)->setText(lpDownloads->reportName());
+					lpPath->child(row, 3)->setText(lpDownloads->localFolder());
+					lpPath->child(row, 4)->setText(lpDownloads->localFileName());
+					lpPath->child(row, 5)->setText(lpDownloads->downloaded().toString("dd.MM.yyyy hh:mm:ss"));
+				}
+
+				m_lpProgressBar->setValue(curRow);
+				qApp->processEvents();
+
+				curRow++;
+			}
+		}
+	}
+
+	for(int x = 0;x < m_lpDownloadsListModel->columnCount();x++)
+		ui->m_lpDownloadsList->resizeColumnToContents(x);
+
+	m_lpProgressBar->setVisible(false);
 }
 
 void cMainWindow::onPathsContextMenu(const QPoint &pos)
@@ -265,4 +355,144 @@ void cMainWindow::onPathsChanged(QStandardItem* item)
 		m_lpPathsListModel->item(item->row(), 4)->setText("*****");
 
 	connect(m_lpPathsListModel,	&QStandardItemModel::itemChanged,		this,	&cMainWindow::onPathsChanged);
+}
+
+void cMainWindow::onStartDateChanged(const QDate& date)
+{
+	m_lpDownloadsFilterProxyModel->setStartDate(date);
+
+	QSettings	settings;
+	settings.setValue("startDate", QVariant::fromValue(date));
+}
+
+void cMainWindow::fillDownloadsList()
+{
+	m_lpDownloadsListModel->clear();
+
+	QStringList		header;
+	QString			oldServer	= "";
+	QString			oldPath		= "";
+	QStandardItem*	lpServer	= nullptr;
+	QStandardItem*	lpPath		= nullptr;
+
+	header << "server/path/filename" << "timestamp" << "report name" << "local folder" << "local filename" << "downloaded";
+	m_lpDownloadsListModel->setHorizontalHeaderLabels(header);
+
+	m_downloadsList.sort();
+
+	for(int x = 0;x < m_downloadsList.count();x++)
+	{
+		cDownloads*	lpDownloads	= m_downloadsList[x];
+
+		QList<QStandardItem*>	items;
+
+		if(lpDownloads->paths()->server() != oldServer)
+		{
+			oldServer	= lpDownloads->paths()->server();
+			oldPath		= "";
+
+			lpServer	= new QStandardItem(oldServer);
+			lpServer->setData(QVariant::fromValue(0), Qt::UserRole+2);
+			m_lpDownloadsListModel->appendRow(lpServer);
+		}
+
+		if(lpDownloads->paths()->path() != oldPath)
+		{
+			oldPath		= lpDownloads->paths()->path();
+
+			lpPath		= new QStandardItem(oldPath);
+			lpPath->setData(QVariant::fromValue(1), Qt::UserRole+2);
+			lpServer->appendRow(lpPath);
+		}
+
+		items.append(new QStandardItem(lpDownloads->fileName()));
+		items.append(new QStandardItem(lpDownloads->timestamp().toString("dd.MM.yyyy hh:mm:ss")));
+		items.append(new QStandardItem(lpDownloads->reportName()));
+		items.append(new QStandardItem(lpDownloads->paths()->localFolder()));
+		items.append(new QStandardItem(lpDownloads->localFileName()));
+		items.append(new QStandardItem(lpDownloads->downloaded().toString("dd.MM.yyyy hh:mm:ss")));
+
+		items[0]->setData(QVariant::fromValue(lpDownloads), Qt::UserRole+1);
+		items[1]->setData(QVariant::fromValue(lpDownloads), Qt::UserRole+1);
+		items[2]->setData(QVariant::fromValue(lpDownloads), Qt::UserRole+1);
+		items[3]->setData(QVariant::fromValue(lpDownloads), Qt::UserRole+1);
+		items[4]->setData(QVariant::fromValue(lpDownloads), Qt::UserRole+1);
+		items[5]->setData(QVariant::fromValue(lpDownloads), Qt::UserRole+1);
+		items[0]->setData(QVariant::fromValue(2), Qt::UserRole+2);
+
+		lpPath->appendRow(items);
+	}
+
+	ui->m_lpDownloadsList->expandAll();
+
+	for(int x = 0;x < m_lpDownloadsListModel->columnCount();x++)
+		ui->m_lpDownloadsList->resizeColumnToContents(x);
+}
+
+bool cMainWindow::download(cDownloads* lpDownloads)
+{
+	QDir					dir;
+	QNetworkAccessManager	networkManager;
+	QString					szRequest	= QString(lpDownloads->paths()->server() + lpDownloads->paths()->path() + "/" + lpDownloads->fileName());
+
+	QUrl					url(szRequest);
+	if(!lpDownloads->paths()->userName().isEmpty())
+	{
+		url.setUserName(lpDownloads->paths()->userName());
+		url.setPassword(lpDownloads->paths()->password());
+	}
+
+	QNetworkRequest			request;
+	request.setUrl(url);
+
+	QNetworkReply*			reply   = networkManager.get(request);
+	QEventLoop				loop;
+
+	QObject::connect(reply, SIGNAL(finished()), &loop, SLOT(quit()));
+	loop.exec();
+
+	if(reply->error() == QNetworkReply::NoError)
+	{
+		QString			strReply		= QString(reply->readAll());
+		QStringList		replyList		= strReply.split("\n");
+
+		QString			reportName		= replyList[1];
+		if(!reportName.indexOf("dashboardreport"))
+		{
+			delete reply;
+			return(false);
+		}
+
+		reportName	= reportName.mid(reportName.indexOf("dashboardreport")+22);
+		reportName	= reportName.left(reportName.indexOf("\""));
+		lpDownloads->setReportName(reportName);
+
+		lpDownloads->setLocalFolder(lpDownloads->paths()->localFolder() + "/" + lpDownloads->timestamp().toString("yyyy/MM"));
+
+		QString	localFileName	= reportName + " - " + lpDownloads->timestamp().toString("yyyy-MM-dd") + ".xml";
+		lpDownloads->setLocalFileName(localFileName);
+
+		dir.mkpath(lpDownloads->localFolder());
+
+		QFile	file(lpDownloads->localFolder() + "/" + lpDownloads->localFileName());
+
+		if(file.open(QIODevice::WriteOnly | QIODevice::Text))
+		{
+			QTextStream stream(&file);
+			stream << strReply;
+			file.close();
+
+			lpDownloads->setDownloaded(QDateTime::currentDateTime());
+			lpDownloads->save();
+		}
+	}
+	else
+	{
+		qDebug() << reply->errorString();
+		delete reply;
+	}
+
+	delete reply;
+
+	return(true);
 }

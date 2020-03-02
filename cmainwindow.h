@@ -5,8 +5,10 @@
 #include "cpathsitemdelegate.h"
 #include "cdownloads.h"
 #include "cpaths.h"
+#include "cdownloadsfilterproxymodel.h"
 
 #include <QMainWindow>
+#include <QProgressBar>
 #include <QSqlDatabase>
 #include <QStandardItemModel>
 #include <QCloseEvent>
@@ -38,13 +40,18 @@ public:
 	~cMainWindow();
 
 private:
-	Ui::cMainWindow*                ui;							/**< TODO: describe */
+	Ui::cMainWindow*                ui;								/**< TODO: describe */
 
-	QStandardItemModel*				m_lpDownloadsListModel;		/**< TODO: describe */
-	QStandardItemModel*				m_lpPathsListModel;			/**< TODO: describe */
+	QProgressBar*					m_lpProgressBar;				/**< TODO: describe */
+	QStandardItemModel*				m_lpDownloadsListModel;			/**< TODO: describe */
+	cDownloadsFilterProxyModel*		m_lpDownloadsFilterProxyModel;	/*!< TODO: describe */
+	QStandardItemModel*				m_lpPathsListModel;				/**< TODO: describe */
 
-	cDownloadsList					m_downloadsList;			/**< TODO: describe */
-	cPathsList						m_pathsList;				/**< TODO: describe */
+	cDownloadsList					m_downloadsList;				/**< TODO: describe */
+	cPathsList						m_pathsList;					/**< TODO: describe */
+
+	void							fillDownloadsList();
+	bool							download(cDownloads* lpDownloads);
 
 protected:
 	/**
@@ -80,5 +87,7 @@ private slots:
 	 *
 	 */
 	void							onPathsDelete();
+
+	void							onStartDateChanged(const QDate& date);
 };
 #endif // CMAINWINDOW_H

@@ -30,12 +30,13 @@ cDownloads::cDownloads(cPaths* lpPaths, const QString& html) :
 	setValues(tmp);
 }
 
-cDownloads::cDownloads(cPaths* lpPaths, const int id, const QString& fileName, const QDateTime timestamp, const QString& reportName, const QString &localFileName, const QDateTime& downloaded) :
+cDownloads::cDownloads(cPaths* lpPaths, const int id, const QString& fileName, const QDateTime timestamp, const QString& reportName, const QString& localFolder, const QString &localFileName, const QDateTime& downloaded) :
 	m_lpPaths(lpPaths),
 	m_id(id),
 	m_fileName(fileName),
 	m_timestamp(timestamp),
 	m_reportName(reportName),
+	m_localFolder(localFolder),
 	m_localFileName(localFileName),
 	m_downloaded(downloaded)
 {
@@ -66,11 +67,12 @@ bool cDownloads::save()
 
 	if(m_id == -1)
 	{
-		query.prepare("INSERT INTO downloads (pathsID, fileName, timestamp, reportName, localFileName, downloaded) VALUES (:pathsID, :fileName, :timestamp, :reportName, :localFileName, :downloaded);");
+		query.prepare("INSERT INTO downloads (pathsID, fileName, timestamp, reportName, localFolder, localFileName, downloaded) VALUES (:pathsID, :fileName, :timestamp, :reportName, :localFolder, :localFileName, :downloaded);");
 		query.bindValue(":pathsID", m_lpPaths->id());
 		query.bindValue(":fileName", m_fileName);
 		query.bindValue(":timestamp", m_timestamp);
 		query.bindValue(":reportName", m_reportName);
+		query.bindValue(":localFolder", m_localFolder);
 		query.bindValue(":localFileName", m_localFileName);
 		query.bindValue(":downloaded", m_downloaded);
 
@@ -99,11 +101,12 @@ bool cDownloads::save()
 	}
 	else
 	{
-		query.prepare("UPDATE downloads SET pathsID=:pathsID, fileName=:fileName, timestamp=:timestamp, reportName=:reportName, localFileName=:localFileName, downloaded=:downloaded WHERE id=:id;");
+		query.prepare("UPDATE downloads SET pathsID=:pathsID, fileName=:fileName, timestamp=:timestamp, reportName=:reportName, localFolder=:localFolder, localFileName=:localFileName, downloaded=:downloaded WHERE id=:id;");
 		query.bindValue(":pathsID", m_lpPaths->id());
 		query.bindValue(":fileName", m_fileName);
 		query.bindValue(":timestamp", m_timestamp);
 		query.bindValue(":reportName", m_reportName);
+		query.bindValue(":localFolder", m_localFolder);
 		query.bindValue(":localFileName", m_localFileName);
 		query.bindValue(":downloaded", m_downloaded);
 		query.bindValue(":id", m_id);
@@ -118,9 +121,19 @@ bool cDownloads::save()
 	return(true);
 }
 
+void cDownloads::setPaths(cPaths* lpPaths)
+{
+	m_lpPaths	= lpPaths;
+}
+
 cPaths* cDownloads::paths()
 {
 	return(m_lpPaths);
+}
+
+void cDownloads::setFileName(const QString& fileName)
+{
+	m_fileName	= fileName;
 }
 
 QString cDownloads::fileName()
@@ -128,9 +141,19 @@ QString cDownloads::fileName()
 	return(m_fileName);
 }
 
+void cDownloads::setTimestamp(const QDateTime& timestamp)
+{
+	m_timestamp	= timestamp;
+}
+
 QDateTime cDownloads::timestamp()
 {
 	return(m_timestamp);
+}
+
+void cDownloads::setReportName(const QString& reportName)
+{
+	m_reportName	= reportName;
 }
 
 QString cDownloads::reportName()
@@ -138,14 +161,54 @@ QString cDownloads::reportName()
 	return(m_reportName);
 }
 
+void cDownloads::setLocalFolder(const QString& localFolder)
+{
+	m_localFolder	= localFolder;
+}
+
+QString cDownloads::localFolder()
+{
+	return(m_localFolder);
+}
+
+void cDownloads::setLocalFileName(const QString& localFileName)
+{
+	m_localFileName	= localFileName;
+}
+
 QString cDownloads::localFileName()
 {
 	return(m_localFileName);
 }
 
+void cDownloads::setDownloaded(const QDateTime& downloaded)
+{
+	m_downloaded	= downloaded;
+}
+
 QDateTime cDownloads::downloaded()
 {
 	return(m_downloaded);
+}
+
+bool downloadsSort(cDownloads* downloads1, cDownloads* downloads2)
+{
+	if(downloads1->paths()->server() < downloads2->paths()->server())
+		return(true);
+	else if(downloads1->paths()->server() > downloads2->paths()->server())
+		return(false);
+
+	if(downloads1->paths()->path() < downloads2->paths()->path())
+		return(true);
+	else if(downloads1->paths()->path() > downloads2->paths()->path())
+		return(false);
+
+	if(downloads1->fileName() < downloads2->fileName())
+		return(true);
+	else if(downloads1->fileName() > downloads2->fileName())
+		return(false);
+
+	return(false);
 }
 
 cDownloadsList::cDownloadsList(cPathsList *lpPathsList) :
@@ -157,7 +220,7 @@ void cDownloadsList::load()
 {
 	QSqlQuery	query(g_db);
 
-	query.prepare("SELECT downloads.id, downloads.pathsID, downloads.fileName, downloads.timestamp, downloads.reportName, downloads.localFileName, downloads.downloaded FROM downloads, paths WHERE downloads.pathsID=paths.id ORDER BY paths.server, paths.path, downloads.fileName;");
+	query.prepare("SELECT downloads.id, downloads.pathsID, downloads.fileName, downloads.timestamp, downloads.reportName, downloads.localFolder, downloads.localFileName, downloads.downloaded FROM downloads, paths WHERE downloads.pathsID=paths.id ORDER BY paths.server, paths.path, downloads.fileName;");
 
 	if(!query.exec())
 	{
@@ -167,7 +230,7 @@ void cDownloadsList::load()
 
 	while(query.next())
 		add(query.value("downloads.pathsID").toInt(), query.value("downloads.id").toInt(), query.value("downloads.fileName").toString(), query.value("downloads.timestamp").toDateTime(),
-			query.value("downloads.reportName").toString(), query.value("downloads.localFileName").toString(), query.value("downloads.downloaded").toDateTime());
+			query.value("downloads.reportName").toString(), query.value("downloads.localFolder").toString(), query.value("downloads.localFileName").toString(), query.value("downloads.downloaded").toDateTime());
 }
 
 void cDownloadsList::load(cPaths* lpPaths)
@@ -224,15 +287,15 @@ cDownloads* cDownloadsList::add(cPaths* lpPaths, const QString& html)
 {
 	QString	tmp	= html.mid(html.indexOf("<a href")+9);
 	tmp			= tmp.left(tmp.indexOf("\">"));
-	return(add(lpPaths, -1, tmp, QDateTime(), "", "", QDateTime(), false));
+	return(add(lpPaths, -1, tmp, QDateTime(), "", "", "", QDateTime(), false));
 }
 
-cDownloads* cDownloadsList::add(int pathsID, const int id, const QString& fileName, const QDateTime timestamp, const QString& reportName, const QString& localFileName, const QDateTime& downloaded, bool fast)
+cDownloads* cDownloadsList::add(int pathsID, const int id, const QString& fileName, const QDateTime timestamp, const QString& reportName, const QString& localFolder, const QString& localFileName, const QDateTime& downloaded, bool fast)
 {
-	return(add(m_lpPathsList->find(pathsID), id, fileName, timestamp, reportName, localFileName, downloaded, fast));
+	return(add(m_lpPathsList->find(pathsID), id, fileName, timestamp, reportName, localFolder, localFileName, downloaded, fast));
 }
 
-cDownloads* cDownloadsList::add(cPaths* lpPaths, const int id, const QString& fileName, const QDateTime timestamp, const QString& reportName, const QString& localFileName, const QDateTime& downloaded, bool fast)
+cDownloads* cDownloadsList::add(cPaths* lpPaths, const int id, const QString& fileName, const QDateTime timestamp, const QString& reportName, const QString& localFolder, const QString& localFileName, const QDateTime& downloaded, bool fast)
 {
 	cDownloads*	lpDownloads	= nullptr;
 
@@ -243,7 +306,7 @@ cDownloads* cDownloadsList::add(cPaths* lpPaths, const int id, const QString& fi
 			return(nullptr);
 	}
 
-	lpDownloads	= new cDownloads(lpPaths, id, fileName, timestamp, reportName, localFileName, downloaded);
+	lpDownloads	= new cDownloads(lpPaths, id, fileName, timestamp, reportName, localFolder, localFileName, downloaded);
 	append(lpDownloads);
 	return(lpDownloads);
 }
@@ -257,4 +320,9 @@ cDownloads* cDownloadsList::find(cPaths* lpPaths, const QString& fileName)
 			return(at(x));
 	}
 	return(nullptr);
+}
+
+void cDownloadsList::sort()
+{
+	std::sort(begin(), end(), downloadsSort);
 }

@@ -13,16 +13,30 @@ class cDownloads
 {
 public:
 	cDownloads(cPaths* lpPaths, const QString& html);
-	cDownloads(cPaths* lpPaths, const int id, const QString& fileName, const QDateTime timestamp, const QString& reportName, const QString& localFileName, const QDateTime& downloaded);
+	cDownloads(cPaths* lpPaths, const int id, const QString& fileName, const QDateTime timestamp, const QString& reportName, const QString& localFolder, const QString& localFileName, const QDateTime& downloaded);
 
 	void			setValues(const QString& link);
 	bool			save();
 
+	void			setPaths(cPaths* lpPaths);
 	cPaths*			paths();
+
+	void			setFileName(const QString& fileName);
 	QString			fileName();
+
+	void			setTimestamp(const QDateTime& timestamp);
 	QDateTime		timestamp();
+
+	void			setReportName(const QString& reportName);
 	QString			reportName();
+
+	void			setLocalFolder(const QString& localFolder);
+	QString			localFolder();
+
+	void			setLocalFileName(const QString& localFileName);
 	QString			localFileName();
+
+	void			setDownloaded(const QDateTime& downloaded);
 	QDateTime		downloaded();
 
 private:
@@ -31,6 +45,7 @@ private:
 	QString			m_fileName;
 	QDateTime		m_timestamp;
 	QString			m_reportName;
+	QString			m_localFolder;
 	QString			m_localFileName;
 	QDateTime		m_downloaded;
 };
@@ -47,9 +62,11 @@ public:
 
 	cDownloads*	add(int pathsID, const QString& html);
 	cDownloads*	add(cPaths* lpPaths, const QString& html);
-	cDownloads*	add(int pathsID, const int id, const QString& fileName, const QDateTime timestamp, const QString& reportName, const QString& localFileName, const QDateTime& downloaded, bool fast = true);
-	cDownloads*	add(cPaths* lpPaths, const int id, const QString& fileName, const QDateTime timestamp, const QString& reportName, const QString& localFileName, const QDateTime& downloaded, bool fast = true);
+	cDownloads*	add(int pathsID, const int id, const QString& fileName, const QDateTime timestamp, const QString& reportName, const QString& localFolder, const QString& localFileName, const QDateTime& downloaded, bool fast = true);
+	cDownloads*	add(cPaths* lpPaths, const int id, const QString& fileName, const QDateTime timestamp, const QString& reportName, const QString& localFolder, const QString& localFileName, const QDateTime& downloaded, bool fast = true);
 	cDownloads*	find(cPaths* lpPaths, const QString& fileName);
+
+	void		sort();
 
 private:
 	cPathsList*	m_lpPathsList;
