@@ -242,11 +242,25 @@ void cMainWindow::onDownload()
 
 				if(!lpDownloads->downloaded().isValid())
 				{
-					download(lpDownloads);
-					lpPath->child(row, 2)->setText(lpDownloads->reportName());
-					lpPath->child(row, 3)->setText(lpDownloads->localFolder());
-					lpPath->child(row, 4)->setText(lpDownloads->localFileName());
-					lpPath->child(row, 5)->setText(lpDownloads->downloaded().toString("dd.MM.yyyy hh:mm:ss"));
+					QString	ret	= download(lpDownloads);
+
+					if(ret.isEmpty())
+					{
+						lpPath->child(row, 2)->setText(lpDownloads->reportName());
+						lpPath->child(row, 3)->setText(lpDownloads->localFolder());
+						lpPath->child(row, 4)->setText(lpDownloads->localFileName());
+						lpPath->child(row, 5)->setText(lpDownloads->downloaded().toString("dd.MM.yyyy hh:mm:ss"));
+					}
+					else
+					{
+						if(ret.contains("@"))
+						{
+							QString	tmp	= ret.left(ret.indexOf("//")+2);
+							tmp	+= ret.mid(ret.indexOf("@")+1);
+							ret	= tmp;
+						}
+						lpPath->child(row, 5)->setText(ret);
+					}
 				}
 
 				m_lpProgressBar->setValue(curRow);
@@ -429,7 +443,7 @@ void cMainWindow::fillDownloadsList()
 		ui->m_lpDownloadsList->resizeColumnToContents(x);
 }
 
-bool cMainWindow::download(cDownloads* lpDownloads)
+QString cMainWindow::download(cDownloads* lpDownloads)
 {
 	QDir					dir;
 	QNetworkAccessManager	networkManager;
@@ -460,7 +474,7 @@ bool cMainWindow::download(cDownloads* lpDownloads)
 		if(!reportName.indexOf("dashboardreport"))
 		{
 			delete reply;
-			return(false);
+			return("wrong file format");
 		}
 
 		reportName	= reportName.mid(reportName.indexOf("dashboardreport")+22);
@@ -489,10 +503,12 @@ bool cMainWindow::download(cDownloads* lpDownloads)
 	else
 	{
 		qDebug() << reply->errorString();
+		QString	str	= reply->errorString();
 		delete reply;
+		return(str);
 	}
 
 	delete reply;
 
-	return(true);
+	return("");
 }

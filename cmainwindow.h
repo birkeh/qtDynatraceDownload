@@ -51,7 +51,7 @@ private:
 	cPathsList						m_pathsList;					/**< TODO: describe */
 
 	void							fillDownloadsList();
-	bool							download(cDownloads* lpDownloads);
+	QString							download(cDownloads* lpDownloads);
 
 protected:
 	/**
