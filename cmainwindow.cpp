@@ -21,6 +21,8 @@
 #include <QNetworkReply>
 #include <QEventLoop>
 
+#include <QTextEdit>
+
 
 QSqlDatabase	g_db;
 
@@ -479,6 +481,11 @@ QString cMainWindow::download(cDownloads* lpDownloads)
 
 		reportName	= reportName.mid(reportName.indexOf("dashboardreport")+22);
 		reportName	= reportName.left(reportName.indexOf("\""));
+
+		QTextEdit	textEdit;
+		textEdit.setHtml(reportName);
+		reportName	= textEdit.toPlainText();
+
 		lpDownloads->setReportName(reportName);
 
 		lpDownloads->setLocalFolder(lpDownloads->paths()->localFolder() + "/" + lpDownloads->timestamp().toString("yyyy/MM"));
